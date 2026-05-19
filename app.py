@@ -10,6 +10,9 @@ CLAUDE_BASE_URL = os.environ.get("CLAUDE_BASE_URL", "https://api.anthropic.com")
 
 conversations = {}
 roles = {}
+models = {}
+
+DEFAULT_MODEL = "claude-opus-4-6"
 
 HELP_TEXT = """👋 你好！我是 Claude AI 助手
 
@@ -25,7 +28,14 @@ HELP_TEXT = """👋 你好！我是 Claude AI 助手
 /重置角色 — 恢复默认角色
 /翻译 [文字] — 快速翻译
 /润色 [文字] — 润色文章
-/功能 — 查看此帮助"""
+/功能 — 查看此帮助
+模型 — 切换 AI 模型"""
+
+MODEL_TEXT = """请选择模型，回复数字：
+
+1. claude-opus-4-7
+2. claude-opus-4-6（当前默认）
+3. claude-sonnet-4-6"""
 
 @app.route("/", methods=["GET"])
 def health():
@@ -36,10 +46,10 @@ def get_feishu_token():
                    json={"app_id": FEISHU_APP_ID, "app_secret": FEISHU_APP_SECRET})
     return r.json()["tenant_access_token"]
 
-def call_claude(messages):
+def call_claude(messages, model):
     r = httpx.post(f"{CLAUDE_BASE_URL}/v1/messages",
                    headers={"x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01"},
-                   json={"model": "claude-sonnet-4-6", "max_tokens": 8096, "messages": messages},
+                   json={"model": model, "max_tokens": 8096, "messages": messages},
                    timeout=60)
     return r.json()["content"][0]["text"]
 
@@ -57,12 +67,25 @@ def ask_claude(open_id, text):
         conversations[open_id] = []
     if open_id not in roles:
         roles[open_id] = None
+    if open_id not in models:
+        models[open_id] = DEFAULT_MODEL
 
-    # 新用户发送欢迎消息
     if is_new_user:
         threading.Thread(target=reply_feishu, args=(open_id, HELP_TEXT)).start()
 
     cmd = text.strip()
+
+    if cmd == "功能":
+        return HELP_TEXT
+
+    if cmd == "模型":
+        current = models[open_id]
+        return MODEL_TEXT + f"\n\n当前使用：{current}"
+
+    if cmd in ["1", "2", "3"]:
+        model_map = {"1": "claude-opus-4-7", "2": "claude-opus-4-6", "3": "claude-sonnet-4-6"}
+        models[open_id] = model_map[cmd]
+        return f"已切换到 {model_map[cmd]} ✓"
 
     if cmd == "/新话题":
         conversations[open_id].append({"role": "user", "content": "【系统】新话题开始"})
@@ -80,7 +103,8 @@ def ask_claude(open_id, text):
     if cmd == "/历史":
         count = len([m for m in conversations[open_id] if m["role"] == "user"])
         role_info = f"\n当前角色：{roles[open_id]}" if roles[open_id] else ""
-        return f"当前对话共 {count} 轮{role_info}"
+        model_info = f"\n当前模型：{models[open_id]}"
+        return f"当前对话共 {count} 轮{role_info}{model_info}"
 
     if cmd == "/导出":
         if not conversations[open_id]:
@@ -103,11 +127,17 @@ def ask_claude(open_id, text):
 
     if cmd.startswith("/翻译 "):
         content = cmd[4:].strip()
-        return call_claude([{"role": "user", "content": f"请将以下内容翻译成中文（如果是中文则翻译成英文），只输出翻译结果：\n{content}"}])
+        return call_claude([{"role": "user", "content": f"请将以下内容翻译成中文（如果是中文则翻译成英文），只输出翻译结果：\n{content}"}], models[open_id])
 
     if cmd.startswith("/润色 "):
         content = cmd[4:].strip()
-        return call_claude([{"role": "user", "content": f"请润色以下文字，使其更流畅自然，只输出润色后的结果：\n{content}"}])
+        return call_claude([{"role": "user", "content": f"请润色以下文字，使其更流畅自然，只输出润色后的结果：\n{content}"}], models[open_id])
+
+    if cmd == "/总结":
+        if not conversations[open_id]:
+            return "当前没有对话记录。"
+        messages = conversations[open_id] + [{"role": "user", "content": "请用简洁的要点总结我们的对话内容。"}]
+        return call_claude(messages, models[open_id])
 
     messages = conversations[open_id].copy()
     if roles[open_id]:
@@ -115,7 +145,7 @@ def ask_claude(open_id, text):
                     {"role": "assistant", "content": "好的，我会扮演这个角色。"}] + messages
     messages.append({"role": "user", "content": text})
 
-    reply = call_claude(messages[-40:])
+    reply = call_claude(messages[-40:], models[open_id])
     conversations[open_id].append({"role": "user", "content": text})
     conversations[open_id].append({"role": "assistant", "content": reply})
     return reply
