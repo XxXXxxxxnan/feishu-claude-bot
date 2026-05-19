@@ -8,6 +8,10 @@ FEISHU_APP_SECRET = os.environ["FEISHU_APP_SECRET"]
 CLAUDE_API_KEY = os.environ["CLAUDE_API_KEY"]
 CLAUDE_BASE_URL = os.environ.get("CLAUDE_BASE_URL", "https://api.anthropic.com")
 
+@app.route("/", methods=["GET"])
+def health():
+    return "ok"
+
 def get_feishu_token():
     r = httpx.post("https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
                    json={"app_id": FEISHU_APP_ID, "app_secret": FEISHU_APP_SECRET})
