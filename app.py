@@ -11,7 +11,11 @@ CLAUDE_BASE_URL = os.environ.get("CLAUDE_BASE_URL", "https://api.anthropic.com")
 conversations = {}
 roles = {}
 
-HELP_TEXT = """可用指令：
+HELP_TEXT = """👋 你好！我是 Claude AI 助手
+
+直接发消息即可开始对话！
+
+📋 可用指令：
 /新话题 — 开始新对话（保留历史）
 /清除 — 清除对话历史
 /总结 — 总结当前对话
@@ -39,11 +43,24 @@ def call_claude(messages):
                    timeout=60)
     return r.json()["content"][0]["text"]
 
+def reply_feishu(open_id, text):
+    token = get_feishu_token()
+    httpx.post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id",
+               headers={"Authorization": f"Bearer {token}"},
+               json={"receive_id": open_id, "msg_type": "text",
+                     "content": json.dumps({"text": text})})
+
 def ask_claude(open_id, text):
+    is_new_user = open_id not in conversations or len(conversations[open_id]) == 0
+
     if open_id not in conversations:
         conversations[open_id] = []
     if open_id not in roles:
         roles[open_id] = None
+
+    # 新用户发送欢迎消息
+    if is_new_user:
+        threading.Thread(target=reply_feishu, args=(open_id, HELP_TEXT)).start()
 
     cmd = text.strip()
 
@@ -102,13 +119,6 @@ def ask_claude(open_id, text):
     conversations[open_id].append({"role": "user", "content": text})
     conversations[open_id].append({"role": "assistant", "content": reply})
     return reply
-
-def reply_feishu(open_id, text):
-    token = get_feishu_token()
-    httpx.post("https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=open_id",
-               headers={"Authorization": f"Bearer {token}"},
-               json={"receive_id": open_id, "msg_type": "text",
-                     "content": json.dumps({"text": text})})
 
 def handle_async(open_id, text):
     try:
