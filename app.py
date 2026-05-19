@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-import httpx, os, json, threading
+import httpx, os, json, threading, traceback
 
 app = Flask(__name__)
 
@@ -14,11 +14,14 @@ def get_feishu_token():
     return r.json()["tenant_access_token"]
 
 def ask_claude(text):
-    r = httpx.post(f"{CLAUDE_BASE_URL}/v1/messages",
+    url = f"{CLAUDE_BASE_URL}/v1/messages"
+    print(f"Calling Claude API: {url}")
+    r = httpx.post(url,
                    headers={"x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01"},
-                   json={"model": ""model": "claude-sonnet-4-6",", "max_tokens": 1024,
+                   json={"model": "claude-sonnet-4-6", "max_tokens": 1024,
                          "messages": [{"role": "user", "content": text}]},
                    timeout=30)
+    print(f"Claude response: {r.status_code} {r.text}")
     return r.json()["content"][0]["text"]
 
 def reply_feishu(open_id, text):
@@ -33,6 +36,7 @@ def handle_async(open_id, text):
         reply = ask_claude(text)
         reply_feishu(open_id, reply)
     except Exception as e:
+        print(f"ERROR: {traceback.format_exc()}")
         reply_feishu(open_id, f"出错了：{str(e)}")
 
 @app.route("/webhook", methods=["POST"])
