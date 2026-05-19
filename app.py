@@ -12,7 +12,8 @@ conversations = {}
 roles = {}
 models = {}
 
-DEFAULT_MODEL = "claude-opus-4-6"
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "claude-opus-4-7")
+SYSTEM_PROMPT = "你是一个智能助手，请直接回答用户的问题，不要介绍自己是任何特定产品。"
 
 HELP_TEXT = """👋 你好！我是 Claude AI 助手
 
@@ -33,8 +34,8 @@ HELP_TEXT = """👋 你好！我是 Claude AI 助手
 
 MODEL_TEXT = """请选择模型，回复数字：
 
-1. claude-opus-4-7
-2. claude-opus-4-6（当前默认）
+1. claude-opus-4-7（当前默认）
+2. claude-opus-4-6
 3. claude-sonnet-4-6"""
 
 @app.route("/", methods=["GET"])
@@ -46,10 +47,10 @@ def get_feishu_token():
                    json={"app_id": FEISHU_APP_ID, "app_secret": FEISHU_APP_SECRET})
     return r.json()["tenant_access_token"]
 
-def call_claude(messages, model):
+def call_claude(messages, model, system=SYSTEM_PROMPT):
     r = httpx.post(f"{CLAUDE_BASE_URL}/v1/messages",
                    headers={"x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01"},
-                   json={"model": model, "max_tokens": 8096, "messages": messages},
+                   json={"model": model, "max_tokens": 8096, "system": system, "messages": messages},
                    timeout=60)
     return r.json()["content"][0]["text"]
 
@@ -79,8 +80,7 @@ def ask_claude(open_id, text):
         return HELP_TEXT
 
     if cmd == "模型":
-        current = models[open_id]
-        return MODEL_TEXT + f"\n\n当前使用：{current}"
+        return MODEL_TEXT + f"\n\n当前使用：{models[open_id]}"
 
     if cmd in ["1", "2", "3"]:
         model_map = {"1": "claude-opus-4-7", "2": "claude-opus-4-6", "3": "claude-sonnet-4-6"}
@@ -103,8 +103,7 @@ def ask_claude(open_id, text):
     if cmd == "/历史":
         count = len([m for m in conversations[open_id] if m["role"] == "user"])
         role_info = f"\n当前角色：{roles[open_id]}" if roles[open_id] else ""
-        model_info = f"\n当前模型：{models[open_id]}"
-        return f"当前对话共 {count} 轮{role_info}{model_info}"
+        return f"当前对话共 {count} 轮{role_info}\n当前模型：{models[open_id]}"
 
     if cmd == "/导出":
         if not conversations[open_id]:
@@ -139,13 +138,11 @@ def ask_claude(open_id, text):
         messages = conversations[open_id] + [{"role": "user", "content": "请用简洁的要点总结我们的对话内容。"}]
         return call_claude(messages, models[open_id])
 
+    system = f"请扮演：{roles[open_id]}" if roles[open_id] else SYSTEM_PROMPT
     messages = conversations[open_id].copy()
-    if roles[open_id]:
-        messages = [{"role": "user", "content": f"请扮演：{roles[open_id]}"},
-                    {"role": "assistant", "content": "好的，我会扮演这个角色。"}] + messages
     messages.append({"role": "user", "content": text})
 
-    reply = call_claude(messages[-40:], models[open_id])
+    reply = call_claude(messages[-40:], models[open_id], system)
     conversations[open_id].append({"role": "user", "content": text})
     conversations[open_id].append({"role": "assistant", "content": reply})
     return reply
