@@ -35,8 +35,8 @@ def get_feishu_token():
 def call_claude(messages):
     r = httpx.post(f"{CLAUDE_BASE_URL}/v1/messages",
                    headers={"x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01"},
-                   json={"model": "claude-sonnet-4-6", "max_tokens": 1024, "messages": messages},
-                   timeout=30)
+                   json={"model": "claude-sonnet-4-6", "max_tokens": 8096, "messages": messages},
+                   timeout=60)
     return r.json()["content"][0]["text"]
 
 def ask_claude(open_id, text):
