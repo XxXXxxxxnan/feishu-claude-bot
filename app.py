@@ -11,6 +11,7 @@ CLAUDE_BASE_URL = os.environ.get("CLAUDE_BASE_URL", "https://api.anthropic.com")
 conversations = {}
 roles = {}
 models = {}
+greeted = set()
 
 DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "claude-opus-4-7")
 SYSTEM_PROMPT = "你是一个智能助手，请直接回答用户的问题，不要介绍自己是任何特定产品。"
@@ -62,8 +63,6 @@ def reply_feishu(open_id, text):
                      "content": json.dumps({"text": text})})
 
 def ask_claude(open_id, text):
-    is_new_user = open_id not in conversations or len(conversations[open_id]) == 0
-
     if open_id not in conversations:
         conversations[open_id] = []
     if open_id not in roles:
@@ -71,7 +70,8 @@ def ask_claude(open_id, text):
     if open_id not in models:
         models[open_id] = DEFAULT_MODEL
 
-    if is_new_user:
+    if open_id not in greeted:
+        greeted.add(open_id)
         threading.Thread(target=reply_feishu, args=(open_id, HELP_TEXT)).start()
 
     cmd = text.strip()
